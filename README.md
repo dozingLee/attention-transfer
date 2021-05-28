@@ -54,7 +54,7 @@ pip install -r requirements.txt
 
 This section describes how to get the results in the table 1 of the paper.
 
-First, train teachers:
+(1) Train teachers:
 
 ```
 python cifar.py --save logs/resnet_40_1_teacher --depth 40 --width 1
@@ -62,14 +62,14 @@ python cifar.py --save logs/resnet_16_2_teacher --depth 16 --width 2
 python cifar.py --save logs/resnet_40_2_teacher --depth 40 --width 2
 ```
 
-To train with activation-based AT do:
-
+(2) Train with activation-based AT:
+-  assign teacher id & hyper-parameter `beta`
 ```
 python cifar.py --save logs/at_16_1_16_2 --teacher_id resnet_16_2_teacher --beta 1e+3
 ```
 
-To train with KD:
-
+(3) Train with KD:
+-  assign teacher id & hyper-parameter `alpha`
 ```
 python cifar.py --save logs/kd_16_1_16_2 --teacher_id resnet_16_2_teacher --alpha 0.9
 ```

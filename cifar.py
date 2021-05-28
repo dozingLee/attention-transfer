@@ -29,41 +29,59 @@ from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 import utils
 
+'''
+        The built-in auto tuner of cudnn automatically finds the most suitable 
+        algorithm for the current convolution network structure, which is suitable 
+        for the situation that the network structure and network input do not change.
+'''
 cudnn.benchmark = True
 
 parser = argparse.ArgumentParser(description='Wide Residual Networks')
 # Model options
-parser.add_argument('--depth', default=16, type=int)
-parser.add_argument('--width', default=1, type=float)
-parser.add_argument('--dataset', default='CIFAR10', type=str)
-parser.add_argument('--dataroot', default='.', type=str)
-parser.add_argument('--dtype', default='float', type=str)
-parser.add_argument('--nthread', default=4, type=int)
+parser.add_argument('--depth', default=16, type=int,
+                    metavar="DEPTH", help="residual network depth (default: 16, depth must be 6n+4)")
+parser.add_argument('--width', default=1, type=int,
+                    metavar="WIDTH", help="(default: 1)")
+parser.add_argument('--dataset', default='CIFAR10', type=str,
+                    metavar="DATASET", help="training dataset (default: CIFAR10)")
+parser.add_argument('--dataroot', default='.', type=str,
+                    metavar="PATH", help="dataset root (default:  ., current directory)")
+parser.add_argument('--dtype', default='float', type=str,
+                    metavar="DTYPE", help="data type (default: float)")
+parser.add_argument('--nthread', default=4, type=int,
+                    metavar="N", help="number of dataloader working thread (default: 4)")
 parser.add_argument('--teacher_id', default='', type=str)
 
 # Training options
-parser.add_argument('--batch_size', default=128, type=int)
-parser.add_argument('--lr', default=0.1, type=float)
-parser.add_argument('--epochs', default=200, type=int, metavar='N',
-                    help='number of total epochs to run')
-parser.add_argument('--weight_decay', default=0.0005, type=float)
+parser.add_argument('--batch_size', default=128, type=int,
+                    metavar="N", help="input batch size for training (default: 128)")
+parser.add_argument('--lr', default=0.1, type=float,
+                    metavar="LR", help="learning rate (default: 0.1)")
+parser.add_argument('--epochs', default=200, type=int,
+                    metavar='N', help='number of total epochs to run')
+parser.add_argument('--weight_decay', '-wd', default=0.0005, type=float,
+                    metavar="W", help="weight decay (default: 0.0005)")
 parser.add_argument('--epoch_step', default='[60,120,160]', type=str,
-                    help='json list with epochs to drop lr on')
-parser.add_argument('--lr_decay_ratio', default=0.2, type=float)
-parser.add_argument('--resume', default='', type=str)
-parser.add_argument('--randomcrop_pad', default=4, type=float)
-parser.add_argument('--temperature', default=4, type=float)
+                    metavar="N", help='json list with epochs to drop lr on (default: [60,120,160])')
+parser.add_argument('--lr_decay_ratio', default=0.2, type=float,
+                    metavar="R", help="learning rate decay ratio (default: 0.2)")
+parser.add_argument('--resume', default='', type=str,
+                    metavar="PATH", help="path to latest checkpoint (default: none)")
+parser.add_argument('--randomcrop_pad', default=4, type=int,
+                    metavar="R", help="random crop padding (default: 4)")
+parser.add_argument('--temperature', default=4, type=float,
+                    metavar="T")
 parser.add_argument('--alpha', default=0, type=float)
 parser.add_argument('--beta', default=0, type=float)
 
 # Device options
-parser.add_argument('--cuda', action='store_true')
+parser.add_argument('--cuda', action='stortemperaturee_true', help="uses CUDA training")
 parser.add_argument('--save', default='', type=str,
-                    help='save parameters and logs in this folder')
+                    metavar="PATH", help='save parameters and logs in this folder')
 parser.add_argument('--ngpu', default=1, type=int,
-                    help='number of GPUs to use for training')
+                    metavar="N", help='number of GPUs to use for training (default: 1)')
 parser.add_argument('--gpu_id', default='0', type=str,
-                    help='id(s) for CUDA_VISIBLE_DEVICES')
+                    metavar="ID", help='id(s) for CUDA_VISIBLE_DEVICES (default: 0)')
 
 
 def create_dataset(opt, train):
@@ -74,7 +92,7 @@ def create_dataset(opt, train):
     ])
     if train:
         transform = T.Compose([
-            T.Pad(4, padding_mode='reflect'),
+            T.Pad(opt.randomcrop_pad, padding_mode='reflect'),
             T.RandomHorizontalFlip(),
             T.RandomCrop(32),
             transform
