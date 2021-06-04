@@ -30,18 +30,18 @@ import torch.backends.cudnn as cudnn
 import utils
 
 '''
-        The built-in auto tuner of cudnn automatically finds the most suitable 
-        algorithm for the current convolution network structure, which is suitable 
-        for the situation that the network structure and network input do not change.
+    The built-in auto tuner of cudnn automatically finds the most suitable 
+    algorithm for the current convolution network structure, which is suitable 
+    for the situation that the network structure and network input do not change.
 '''
 cudnn.benchmark = True
 
 parser = argparse.ArgumentParser(description='Wide Residual Networks')
 # Model options
 parser.add_argument('--depth', default=16, type=int,
-                    metavar="DEPTH", help="residual network depth (default: 16, depth must be 6n+4)")
+                    metavar="D", help="residual network depth (default: 16, depth must be 6n+4)")
 parser.add_argument('--width', default=1, type=int,
-                    metavar="WIDTH", help="(default: 1)")
+                    metavar="W", help="(default: 1)")
 parser.add_argument('--dataset', default='CIFAR10', type=str,
                     metavar="DATASET", help="training dataset (default: CIFAR10)")
 parser.add_argument('--dataroot', default='.', type=str,
@@ -50,7 +50,8 @@ parser.add_argument('--dtype', default='float', type=str,
                     metavar="DTYPE", help="data type (default: float)")
 parser.add_argument('--nthread', default=4, type=int,
                     metavar="N", help="number of dataloader working thread (default: 4)")
-parser.add_argument('--teacher_id', default='', type=str)
+parser.add_argument('--teacher_id', default='', type=str,
+                    metavar="ID", help="teacher id (default: none)")
 
 # Training options
 parser.add_argument('--batch_size', default=128, type=int,
@@ -58,7 +59,7 @@ parser.add_argument('--batch_size', default=128, type=int,
 parser.add_argument('--lr', default=0.1, type=float,
                     metavar="LR", help="learning rate (default: 0.1)")
 parser.add_argument('--epochs', default=200, type=int,
-                    metavar='N', help='number of total epochs to run')
+                    metavar='N', help='number of total epochs to run (default: 200)')
 parser.add_argument('--weight_decay', '-wd', default=0.0005, type=float,
                     metavar="W", help="weight decay (default: 0.0005)")
 parser.add_argument('--epoch_step', default='[60,120,160]', type=str,
@@ -75,7 +76,7 @@ parser.add_argument('--alpha', default=0, type=float)
 parser.add_argument('--beta', default=0, type=float)
 
 # Device options
-parser.add_argument('--cuda', action='stortemperaturee_true', help="uses CUDA training")
+parser.add_argument('--cuda', action='store_true', help="uses CUDA training")
 parser.add_argument('--save', default='', type=str,
                     metavar="PATH", help='save parameters and logs in this folder')
 parser.add_argument('--ngpu', default=1, type=int,
@@ -85,10 +86,16 @@ parser.add_argument('--gpu_id', default='0', type=str,
 
 
 def create_dataset(opt, train):
+    """
+    :param opt: argument parser
+    :param train: True or False
+    :return: load dataset
+    """
     transform = T.Compose([
         T.ToTensor(),
-        T.Normalize(np.array([125.3, 123.0, 113.9]) / 255.0,
-                    np.array([63.0, 62.1, 66.7]) / 255.0),
+        T.Normalize(
+            np.array([125.3, 123.0, 113.9]) / 255.0,
+            np.array([63.0, 62.1, 66.7]) / 255.0)
     ])
     if train:
         transform = T.Compose([
@@ -97,26 +104,50 @@ def create_dataset(opt, train):
             T.RandomCrop(32),
             transform
         ])
+
+    '''
+    getattr(object, name[, default])
+        :param object: Object with several attributes
+        :param name: Data type is string (so the reflection is used here)
+        :return: object['name']
+    '''
     return getattr(datasets, opt.dataset)(opt.dataroot, train=train, download=True, transform=transform)
 
 
 def resnet(depth, width, num_classes):
     assert (depth - 4) % 6 == 0, 'depth should be 6n+4'
-    n = (depth - 4) // 6
+    n = (depth - 4) // 6  # divide, round down
     widths = [int(v * width) for v in (16, 32, 64)]
 
     def gen_block_params(ni, no):
+        """ Block
+        :param ni: input size
+        :param no: output size
+        :return:
+            conv0 weight: ni×no×3×3
+            conv1 weight: no×no×3×3
+            BN parameters: weight, bias, running_mean, running_var (4×n)
+            convdim weight: ni×no×1×1, mapping ni to no
+        """
         return {
             'conv0': utils.conv_params(ni, no, 3),
             'conv1': utils.conv_params(no, no, 3),
-            'bn0': utils.bnparams(ni),
+            'bn0': utils.bnparams(ni),  #
             'bn1': utils.bnparams(no),
             'convdim': utils.conv_params(ni, no, 1) if ni != no else None,
         }
 
     def gen_group_params(ni, no, count):
-        return {'block%d' % i: gen_block_params(ni if i == 0 else no, no)
-                for i in range(count)}
+        """ Group
+        :param ni: input size
+        :param no: output size
+        :param count: group size
+        :return:
+            
+        """
+        return {
+            'block%d' % i: gen_block_params(ni if i == 0 else no, no) for i in range(count)
+        }
 
     flat_params = utils.cast(utils.flatten({
         'conv0': utils.conv_params(3, 16, 3),
@@ -248,7 +279,8 @@ def main():
                         optimizer=state['optimizer'].state_dict(),
                         epoch=t['epoch']),
                    os.path.join(opt.save, 'model.pt7'))
-        z = vars(opt).copy(); z.update(t)
+        z = vars(opt).copy();
+        z.update(t)
         logname = os.path.join(opt.save, 'log.txt')
         with open(logname, 'a') as f:
             f.write('json_stats: ' + json.dumps(z) + '\n')
@@ -298,9 +330,9 @@ def main():
             "train_time": train_time,
             "test_time": timer_test.value(),
             "at_losses": [m.value() for m in meters_at],
-           }, state))
+        }, state))
         print('==> id: %s (%d/%d), test_acc: \33[91m%.2f\033[0m' % \
-                       (opt.save, state['epoch'], opt.epochs, test_acc))
+              (opt.save, state['epoch'], opt.epochs, test_acc))
 
     engine = Engine()
     engine.hooks['on_sample'] = on_sample

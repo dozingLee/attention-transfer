@@ -31,6 +31,13 @@ def cast(params, dtype='float'):
 
 
 def conv_params(ni, no, k=1):
+    """ Make convolutional network's parameters normal distribution
+    :param ni: Input dimension
+    :param no: Output dimension
+    :param k: Conv size (default: 1)
+
+    kaiming_normal_: N(0, std^2), std = gain/sqrt(fan_mode)
+    """
     return kaiming_normal_(torch.Tensor(no, ni, k, k))
 
 
@@ -39,10 +46,16 @@ def linear_params(ni, no):
 
 
 def bnparams(n):
-    return {'weight': torch.rand(n),
-            'bias': torch.zeros(n),
-            'running_mean': torch.zeros(n),
-            'running_var': torch.ones(n)}
+    """ Initialize the batch normalization
+    :param n: BN input size
+    :return: BN parameters
+    """
+    return {
+        'weight': torch.rand(n),  # random
+        'bias': torch.zeros(n),   # all zeros
+        'running_mean': torch.zeros(n),
+        'running_var': torch.ones(n)
+    }
 
 
 def data_parallel(f, input, params, mode, device_ids, output_device=None):
