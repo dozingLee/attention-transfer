@@ -150,8 +150,8 @@ def define_student(depth, width):
     def gen_block_params(ni, no):
         return {'conv0': utils.conv_params(ni, no, 3),
                 'conv1': utils.conv_params(no, no, 3),
-                'bn0': utils.bnparams(no),
-                'bn1': utils.bnparams(no),
+                'bn0': utils.bn_params(no),
+                'bn1': utils.bn_params(no),
                 'convdim': utils.conv_params(ni, no, 1) if ni != no else None,
                 }
 
@@ -161,7 +161,7 @@ def define_student(depth, width):
 
     flat_params = OrderedDict(utils.flatten({
         'conv0': utils.conv_params(3, 64, 7),
-        'bn0': utils.bnparams(64),
+        'bn0': utils.bn_params(64),
         'group0': gen_group_params(64, widths[0], blocks[0]),
         'group1': gen_group_params(widths[0], widths[1], blocks[1]),
         'group2': gen_group_params(widths[1], widths[2], blocks[2]),

@@ -115,52 +115,82 @@ def create_dataset(opt, train):
 
 
 def resnet(depth, width, num_classes):
+    """ Resnet model generate:
+    1. Determine block, group and structure based on depth, width and num_classes
+    2. Allocate space for the parameters of block (weight, bias, running_mean, running_var)
+    3. Flatten the parameters in dictionary form and store them in CUDA
+    4. Set all parameters of `requires_grad=True` except BN layer
+    5. Define the training process for block and group and the whole training process
+
+    :param depth: 6n+4
+    :param width: channel size: [width * (16, 32, 64)]
+    :param num_classes: it's up to dataset (e.g. cifar10, num_classes=10)
+    :return f, f_params:
+        f:
+        f_params: parameters data type is (tensor, float)
+    """
     assert (depth - 4) % 6 == 0, 'depth should be 6n+4'
-    n = (depth - 4) // 6  # divide, round down
+    n = (depth - 4) // 6
     widths = [int(v * width) for v in (16, 32, 64)]
 
+    # ==== 1 ====
     def gen_block_params(ni, no):
-        """ Block
+        """ Block (two convolution layers)
         :param ni: input size
         :param no: output size
         :return:
-            conv0 weight: ni×no×3×3
-            conv1 weight: no×no×3×3
-            BN parameters: weight, bias, running_mean, running_var (4×n)
-            convdim weight: ni×no×1×1, mapping ni to no
+            {
+                conv0 weight: ni×no×3×3
+                bn0: ni (BN: weight, bias, running_mean, running_var (4×n))
+                conv1 weight: no×no×3×3
+                bn1: no
+                convdim weight: ni×no×1×1, mapping ni to no
+            }
         """
+        # ==== 2 ====
         return {
             'conv0': utils.conv_params(ni, no, 3),
+            'bn0': utils.bn_params(ni),
             'conv1': utils.conv_params(no, no, 3),
-            'bn0': utils.bnparams(ni),  #
-            'bn1': utils.bnparams(no),
+            'bn1': utils.bn_params(no),
             'convdim': utils.conv_params(ni, no, 1) if ni != no else None,
         }
 
     def gen_group_params(ni, no, count):
-        """ Group
+        """ Group (COUNT Blocks)
         :param ni: input size
         :param no: output size
         :param count: group size
-        :return:
-            
+        :return: COUNT Blocks
         """
         return {
             'block%d' % i: gen_block_params(ni if i == 0 else no, no) for i in range(count)
         }
 
+    # ==== 3 ====
     flat_params = utils.cast(utils.flatten({
         'conv0': utils.conv_params(3, 16, 3),
         'group0': gen_group_params(16, widths[0], n),
         'group1': gen_group_params(widths[0], widths[1], n),
         'group2': gen_group_params(widths[1], widths[2], n),
-        'bn': utils.bnparams(widths[2]),
+        'bn': utils.bn_params(widths[2]),
         'fc': utils.linear_params(widths[2], num_classes),
     }))
 
+    # ==== 4 ====
     utils.set_requires_grad_except_bn_(flat_params)
 
+    # ==== 5 ====
     def block(x, params, base, mode, stride):
+        """ Block operation details:
+                bn0 -> relu -> conv0 -> bn1 -> relu -> conv1 -> convdim -> z + x
+        :param x: input data
+        :param params: all parameters of the dictionary type, accessing with combined keys
+        :param base: prefix of combination key
+        :param mode: Ture means training and False means testing
+        :param stride: convolution kernel moving stride
+        :return: block(x)
+        """
         o1 = F.relu(utils.batch_norm(x, params, base + '.bn0', mode), inplace=True)
         y = F.conv2d(o1, params[base + '.conv0'], stride=stride, padding=1)
         o2 = F.relu(utils.batch_norm(y, params, base + '.bn1', mode), inplace=True)
@@ -171,11 +201,24 @@ def resnet(depth, width, num_classes):
             return z + x
 
     def group(o, params, base, mode, stride):
+        """ Group operation:
+                N block operations
+        :param o: input data
+        :param params: all parameters
+        :param base: prefix of group
+        :param mode: Ture is training and False is testing
+        :param stride: convolution kernel moving stride
+        :return: group(o)
+        """
         for i in range(n):
             o = block(o, params, f'{base}.block{i}', mode, stride if i == 0 else 1)
         return o
 
     def f(input, params, mode, base=''):
+        """ The whole operations details:
+
+
+        """
         x = F.conv2d(input, params[f'{base}conv0'], padding=1)
         g0 = group(x, params, f'{base}group0', mode, 1)
         g1 = group(g0, params, f'{base}group1', mode, 2)
@@ -279,7 +322,7 @@ def main():
                         optimizer=state['optimizer'].state_dict(),
                         epoch=t['epoch']),
                    os.path.join(opt.save, 'model.pt7'))
-        z = vars(opt).copy();
+        z = vars(opt).copy()
         z.update(t)
         logname = os.path.join(opt.save, 'log.txt')
         with open(logname, 'a') as f:
